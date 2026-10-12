@@ -82,7 +82,7 @@ Replace the placeholder `handle_support_ticket` with a LangGraph workflow (deter
 ## Risks and Unresolved Decisions
 | Risk / decision | Impact | Owner | Required decision or mitigation | Due before |
 |---|---|---|---|---|
-| R1: 0.70 cutoff may be unreachable on fixtures given no stemming and weight 1 for body matches | AC-001/AC-002 would escalate instead of answering | project owner | TASK-004 measures it. If TCK-1001 or TCK-1002 score below 0.70, stop and amend the SDD (e.g. term-coverage formula or a different cutoff); do not tune silently | Phase 5 | **MEASURED 2026-10-12 (read-only, before any Phase 4 code):** with the SDD formula `_score / (3 x terms)` the correct top document scores 0.57 for TCK-1001 (KB-101, query = title terms + `password, reset, email, link`) and 0.50 for TCK-1002 (KB-103, query = title terms + `invitation, expired, portal, link`), both below 0.70, so AC-001 and AC-002 would escalate. Retrieval ranking itself is correct (right document is top). Phase 4 is BLOCKED pending an owner decision; see Phase 4 status note.
+| R1: 0.70 cutoff may be unreachable on fixtures given no stemming and weight 1 for body matches | AC-001/AC-002 would escalate instead of answering | project owner | TASK-004 measures it. If TCK-1001 or TCK-1002 score below 0.70, stop and amend the SDD (e.g. term-coverage formula or a different cutoff); do not tune silently | Phase 5 | **MEASURED 2026-10-12 (read-only, before any Phase 4 code):** with the SDD formula `_score / (3 x terms)` the correct top document scores 0.57 for TCK-1001 (KB-101, query = title terms + `password, reset, email, link`) and 0.50 for TCK-1002 (KB-103, query = title terms + `invitation, expired, portal, link`), both below 0.70, so AC-001 and AC-002 would escalate. Retrieval ranking itself is correct (right document is top). **RESOLVED 2026-10-12:** the owner chose term coverage with the 0.70 cutoff kept; SDD draft 2 amends DES-027 and Section 9.
 | R2: a fake chat model may not drive `create_agent` structured output | Phase 6 and 7 tests need another seam | project owner | Preferred: custom fake chat model with `bind_tools`. Fallback: inject at an `Extractor`/`Drafter` seam in `llm.py` and note it in the SDD | Phase 6 |
 | R3: no git repository, so there are no atomic commits or revert boundaries | Plan's commit and rollback steps cannot run | project owner | RESOLVED: `python/` turned out to have an existing git history; baseline commit 432b52c made and work is on branch `plan/support-copilot` (no separate worktree) | Phase 1 |
 | R4: Python 3.10 on PATH vs `requires-python >=3.11` | `python3 -m pytest` fails outside uv | project owner | Always run via `uv run`; uv provisions 3.11+ | Phase 1 |
@@ -321,7 +321,7 @@ This directory is not a git repository (R3), so no worktree is created. If you i
 **Git:** plan worktree.
 
 ### Phase 4 — Confidence score and calibration
-**STATUS: BLOCKED on R1 (2026-10-12).** The red/measure step showed the SDD confidence formula cannot reach 0.70 on the answerable fixture tickets (0.57 and 0.50). No Phase 4 code or tests have been written or committed. Measured alternative (term coverage = share of query terms found in the document title or body, using the existing `_score` > 0 test): TCK-1001 top KB-101 = 0.86; TCK-1002 top KB-103 = 1.00; TCK-1003 top KB-104 = 0.43; a billing-like and an unrelated query = 0.00 for every approved document. Changing the formula or the cutoff is "Ask first" (SDD Section 10) and needs an SDD amendment; do not proceed until the owner decides.
+**R1 RESOLVED (2026-10-12).** The SDD weighted formula could not reach 0.70 on the answerable fixtures (0.57 and 0.50). The owner chose term coverage with the 0.70 cutoff kept; SDD draft 2 amends DES-027 and Section 9 accordingly. Measured with coverage (share of query terms found in the document title or body, using the existing `_score` > 0 test): TCK-1001 top KB-101 = 0.86; TCK-1002 top KB-103 = 1.00; TCK-1003 top KB-104 = 0.43; a billing-like and an unrelated query = 0.00 for every approved document.
 **Goal:** a deterministic confidence score, with a measured check that the 0.70 cutoff is reachable on the fixtures.
 **Size:** S
 **Files affected:** `support_copilot/rules.py`, `tests/test_confidence.py`
@@ -334,10 +334,10 @@ This directory is not a git repository (R3), so no worktree is created. If you i
   **Tests:** TEST-005, TEST-006
   **Depends on:** TASK-003
 
-  **Outcome:** `confidence(query_terms, document)` returns a 0–1 score; the fixture tickets' scores are recorded.
+  **Outcome:** `confidence(query_terms, document)` returns the share of query terms found in the document (0–1) and `CONFIDENCE_THRESHOLD = 0.70` exists; the fixture tickets' scores are recorded.
 
-  **Inputs:** `_score` (`tools.py:38`); SDD Section 9 formula; canned `product_terms` for TCK-1001 and TCK-1002.
-  **Constraints:** deterministic; clamped to 0–1; the cutoff and formula are fixed by the SDD ("Ask first" to change).
+  **Inputs:** `_score` (`tools.py:38`); SDD Section 9 term-coverage formula (draft 2); canned `product_terms` for TCK-1001 and TCK-1002; query terms are the ticket title terms plus `product_terms`.
+  **Constraints:** deterministic; 0–1 by construction; the cutoff and formula are fixed by SDD draft 2 ("Ask first" to change).
   **Rollback:** remove `confidence` and its tests.
   **Measurement:** computed scores for TCK-1001 and TCK-1002 against their expected documents, written into the completion evidence.
 
@@ -345,30 +345,30 @@ This directory is not a git repository (R3), so no worktree is created. If you i
   - `support_copilot/rules.py`
   - `tests/test_confidence.py`
 
-  **Do not change:** the 0.70 cutoff, `tools.py` scoring, the SDD (stop instead, see R1).
+  **Do not change:** the 0.70 cutoff, `tools.py` scoring, the SDD.
 
   **Implementation steps:**
   1. Write TEST-005 and TEST-006 (red).
   2. Implement `confidence`.
-  3. Run the checks. If TEST-006 fails, **stop**: do not tune the formula or cutoff; report to the owner (R1).
+  3. Run the checks. If TEST-006 fails, **stop**: do not tune the formula or cutoff; report to the owner.
 
   **Expected artifacts:** `support_copilot/rules.py`, `tests/test_confidence.py`
   **Expected LOC impact:** production +20–30; tests +50–80; confidence: medium; basis: SDD Section 9 formula; test size depends on canned terms.
   **Required checks:** `uv run pytest tests/test_confidence.py`; `uv run pytest`
-  **Policy evidence:** a material behavior risk accepted only by the owner → R1 decision recorded if TEST-006 fails.
+  **Policy evidence:** a material behavior risk accepted only by the owner → R1 decision recorded (owner chose term coverage, 2026-10-12).
   **Objective-evidence mapping:** AC-007 → domain service → TEST-005 → pytest result; AC-001 (secondary) → TEST-006 → recorded scores.
   **Test derivation:**
 
   | TEST ID | AC ID | Test level | Level role | Precondition / controlled data | Trigger | Positive oracle | Negative oracle | Boundary or failure |
   |---|---|---|---|---|---|---|---|---|
-  | TEST-005 | AC-007 | unit | Primary | fixed documents and term sets | `confidence` twice per input | identical scores on repeat; all title hits give 1.0 | no overlap gives 0.0; score never above 1.0 | empty term set returns 0.0 without error |
-  | TEST-006 | AC-001 | unit | Secondary — proves the cutoff is reachable on real fixtures, a risk the primary integration test would hide behind a fake | KB-101 and KB-103 with canned `product_terms` | `confidence` for TCK-1001 and TCK-1002 | both scores >= 0.70 | n/a | failure here triggers R1 |
+  | TEST-005 | AC-007 | unit | Primary | fixed documents and term sets | `confidence` twice per input | identical scores on repeat; every term present gives 1.0; half the terms present gives 0.5; a body-only term counts | no overlap gives 0.0; score always within 0 to 1 | empty term set returns 0.0 without error; `CONFIDENCE_THRESHOLD == 0.70` |
+  | TEST-006 | AC-001 | unit | Secondary — proves the cutoff is reachable on real fixtures, a risk the primary integration test would hide behind a fake | KB-101 and KB-103 with canned `product_terms` | `confidence` for TCK-1001 and TCK-1002 | top approved document is KB-101 and KB-103, and both scores >= 0.70 | an unrelated query scores 0.0 for every approved document | a failure here reopens R1 |
 
   **Completion evidence:** changed files; red/green commands and exit codes; scores per ticket; R1 outcome; discovered decisions; remaining uncertainty
 
 **Expected authored LOC:** production +20–30; tests +50–80
 **Success criteria:** TEST-005 and TEST-006 pass, or the phase stops with R1 raised.
-**Commit message:** `feat: add retrieval-based confidence score`
+**Commit message:** `feat: add term-coverage confidence score`
 **Git:** plan worktree.
 
 ### Checkpoint: After Phases 1–3
