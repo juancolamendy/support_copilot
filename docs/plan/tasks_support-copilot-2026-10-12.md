@@ -86,6 +86,7 @@ Replace the placeholder `handle_support_ticket` with a LangGraph workflow (deter
 | R2: a fake chat model may not drive `create_agent` structured output | Phase 6 and 7 tests need another seam | project owner | Preferred: custom fake chat model with `bind_tools`. Fallback: inject at an `Extractor`/`Drafter` seam in `llm.py` and note it in the SDD | Phase 6 | **RESOLVED 2026-10-12:** the preferred fake works with `create_agent` + `ToolStrategy`; no seam or SDD change needed (RESULT-016 to 018). |
 | R3: no git repository, so there are no atomic commits or revert boundaries | Plan's commit and rollback steps cannot run | project owner | RESOLVED: `python/` turned out to have an existing git history; baseline commit 432b52c made and work is on branch `plan/support-copilot` (no separate worktree) | Phase 1 |
 | R4: Python 3.10 on PATH vs `requires-python >=3.11` | `python3 -m pytest` fails outside uv | project owner | Always run via `uv run`; uv provisions 3.11+ | Phase 1 |
+| R5: `ToolStrategy` is rejected by the live model (`tool_choice` "tool"/"any" unsupported for `claude-sonnet-5-5`); the Phase 6 fake could not show it | Every live run (demo, CLI, AC-009, AC-010) fails with `AnthropicInvalidRequestError` while offline tests stay green | project owner | Use `ProviderStrategy(schema)` for `ChatAnthropic` and keep `ToolStrategy(schema, handle_errors=False)` for fakes; add a strategy-selection test. `ProviderStrategy` verified live on 2026-10-12 | Phase 9 (before the CLI is run against the real model) |
 
 ## Assumptions
 - None beyond the SDD, apart from the named risks above.
@@ -516,7 +517,7 @@ This directory is not a git repository (R3), so no worktree is created. If you i
 **Size:** M
 **Files affected:** `support_copilot/workflow.py`, `support_copilot/copilot.py`, `tests/test_workflow_stops.py`
 **Task:**
-- [ ] TASK-007 — Graph nodes validate, extract, detect_area, check_incident, with error and incident stops
+- [x] TASK-007 — Graph nodes validate, extract, detect_area, check_incident, with error and incident stops
 
   **Requirements:** REQ-F-003, REQ-F-003a, REQ-F-004, REQ-NF-004; AC-003, AC-004, AC-005 (secondary)
   **Design:** DES-002, DES-003, DES-004, DES-009, DES-010, DES-016, DES-023, DES-030, DES-031
@@ -556,7 +557,18 @@ This directory is not a git repository (R3), so no worktree is created. If you i
   | TEST-011 | AC-004 | unit | Primary | ticket with empty description | `handle_support_ticket` | `status == "error"`, message contains `description`, `escalate` false | extract call count is 0, `response` None | whitespace-only description also rejected |
   | TEST-012 | AC-005 | integration | Secondary — proves the routing edge from area failure to the error stop, which the pure function test cannot | description with no area terms, fake extract output | `handle_support_ticket` | `status == "error"`, message contains `area` | incident and search call counts are 0 | unknown area never reaches `find_owner` |
 
-  **Completion evidence:** changed files; red/green commands and exit codes; call counts; discovered decisions; remaining uncertainty
+  **Completion evidence (2026-10-12):**
+  - Changed files: `support_copilot/workflow.py` (new), `support_copilot/copilot.py`, `tests/test_workflow_stops.py` (new), this plan, `docs/traceability/index.md`.
+  - RESULT-019 (red baseline): `uv run pytest tests/test_workflow_stops.py -q` — exit 1; 9 selected, 0 passed, 9 failed (`TypeError: handle_support_ticket() takes 2 positional arguments but 3 were given`).
+  - RESULT-020 (focused green): `uv run pytest tests/test_workflow_stops.py -q` — exit 0; 9 selected, 9 passed, 0 failed, 0 skipped (TEST-010: 5; TEST-011: 3 parametrized; TEST-012: 1).
+  - RESULT-021 (full suite): `uv run pytest -q` — exit 0; 69 selected, 69 passed, 0 failed, 0 skipped; clean under `-W default`.
+  - Call counts asserted: TCK-1003 incident stop → 1 model call (extraction only) and 0 `search_knowledge` calls; empty or whitespace description → 0 model calls and 0 tool calls; no-area ticket → 1 model call (extraction, per DES-004 order) and 0 tool calls.
+  - Source-driven check: langgraph 1.2.14. `StateGraph.add_node`, `add_conditional_edges(source, path, path_map)`, `START`/`END` and `ainvoke` match the official LangGraph workflow docs and the installed signatures.
+  - Discovered decisions: (1) after `check_incident` finds nothing the graph ends in a `pending` placeholder node that returns an error result; Phase 8 replaces it, and no test asserts the placeholder. (2) `build_workflow(tools, model=None, owners=None)`: the model is created lazily with `get_model()` inside the extract node, so the validation stop needs no API key; `owners` defaults to `load_owners()` because `CopilotTools` has no way to list areas. (3) When several incidents are active the most recently updated one is reported (not specified by the AC; tested). (4) A missing owner on an incident stop adds the note `no owner found for area`. (5) Node logging uses `logging.getLogger("support_copilot.workflow")`, so nothing is printed until the CLI (Phase 9) attaches a stderr handler; the logging test is tagged TEST-010 with REQ-NF-004 and DES-023 because the plan gave this task no separate logging test. (6) Tool exceptions are deliberately not caught yet; that is Phase 8 (TEST-017).
+  - **DEFECT FOUND ON FIRST LIVE CONTACT (not fixed in this phase):** running `uv run python -m support_copilot.demo` with no injected model used the real Claude client because `ANTHROPIC_API_KEY` is set in this environment. All three tickets returned `model call failed: AnthropicInvalidRequestError`. A diagnostic call with a synthetic ticket showed the API message: `tool_choice: type "tool" and "any" are not supported for this model` (model `claude-sonnet-5-5`, which does exist for this key). The cause is `ToolStrategy`, which forces a tool choice; the Phase 6 fake model could not reveal it. A second synthetic call showed `ProviderStrategy(TicketDetails)` works on this model and returns a valid `TicketDetails`. The adapter's own failure path behaved correctly: failure value, no exception, no ticket text. The fix belongs in `llm.py` (Phase 6 files) and is outside TASK-007's allowed changes; see Risks R5.
+  - Live calls made during this phase, for the record: 3 failing requests from the demo (synthetic fixture tickets), 2 diagnostic completions with synthetic text, and 1 `models.list` metadata request. `LANGSMITH_TRACING` is unset, so nothing was traced.
+  - Follow-ups: (a) fix R5 in `llm.py` (provider-native structured output for Claude, tool-based only for fakes) with a test; (b) `RecordingTools` lives in `tests/test_workflow_stops.py`; Phase 8 should move it to `conftest.py` or define its own because conftest is outside its allowed files.
+  - Remaining uncertainty: the full flow beyond the incident stop is unbuilt; the real model path is broken until R5 is fixed, though all offline tests pass.
 
 **Expected authored LOC:** production +105–145; tests +90–130
 **Success criteria:** TEST-010 to TEST-012 pass and the demo runs for TCK-1003 without a model call beyond extraction.
@@ -751,7 +763,7 @@ This directory is not a git repository (R3), so no worktree is created. If you i
 - [x] Phase 4: Confidence score and calibration
 - [x] Phase 5: Fixture tool wrappers
 - [x] Phase 6: LLM adapter and test doubles
-- [ ] Phase 7: Workflow: validation, extraction, area, incident stop
+- [x] Phase 7: Workflow: validation, extraction, area, incident stop
 - [ ] Phase 8: Workflow: search, escalate, draft, failures
 - [ ] Phase 9: CLI and demo
 - [ ] Phase 10: Live checks, traceability gate and docs
