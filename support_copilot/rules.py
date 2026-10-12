@@ -5,10 +5,11 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Collection, Iterable, Sequence
 
-from .tools import _score, _terms
+from .tools import _terms
 from .types import KnowledgeDocument, ServiceOwner
 
 CONFIDENCE_THRESHOLD = 0.70
+PREFIX_LENGTH = 5
 
 
 def _unique_area_terms(owners: Sequence[ServiceOwner]) -> dict[str, set[str]]:
@@ -53,9 +54,27 @@ def filter_docs(documents: Iterable[KnowledgeDocument]) -> list[KnowledgeDocumen
     ]
 
 
+def _term_found(term: str, document_terms: set[str]) -> bool:
+    """Exact match, or a shared first-five-letters prefix (a crude stem)."""
+    if term in document_terms:
+        return True
+    if len(term) < PREFIX_LENGTH:
+        return False
+    prefix = term[:PREFIX_LENGTH]
+    return any(
+        len(other) >= PREFIX_LENGTH and other.startswith(prefix)
+        for other in document_terms
+    )
+
+
 def confidence(query_terms: Collection[str], document: KnowledgeDocument) -> float:
-    """Share of query terms found in the document title or body, from 0 to 1."""
+    """Share of query terms found in the document title or body, from 0 to 1.
+
+    "expiration" matches "expire" and "resend" matches "resending", because the
+    real model's terms do not match the document's word forms exactly (DES-027).
+    """
     if not query_terms:
         return 0.0
-    found = sum(1 for term in query_terms if _score({term}, document) > 0)
+    document_terms = _terms(f"{document.title} {document.content}")
+    found = sum(1 for term in query_terms if _term_found(term, document_terms))
     return found / len(query_terms)

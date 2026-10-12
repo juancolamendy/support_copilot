@@ -4,9 +4,9 @@ _Date: 2026-10-12_
 ## Human Quality Gate
 - Status: Approved with conditions
 - Required reviewers: project owner (engineer accountable for architecture and risk)
-- Artifact revision: draft 2 (2026-10-12), amends DES-027 and Section 9 only
-- Decision/conditions: Draft 1 approved by "design ok" before planning; the adversarial review (cg-design Step 6) was not run and the owner accepted proceeding without it. Draft 2: the confidence formula was changed from weighted score to term coverage after the R1 measurement (0.57 and 0.50 against the 0.70 cutoff). The owner chose "Term coverage, keep 0.70" (asked twice, same answer). A material SDD edit resets this gate to Pending.
-- Evidence: conversation record; R1 measurement in the plan (Risks table and Phase 4 note)
+- Artifact revision: draft 3 (2026-10-12), amends DES-027 and Section 9 only (draft 2: term coverage; draft 3: prefix matching)
+- Decision/conditions: Draft 1 approved by "design ok" before planning; the adversarial review (cg-design Step 6) was not run and the owner accepted proceeding without it. Draft 2: the confidence formula was changed from weighted score to term coverage after the R1 measurement (0.57 and 0.50 against the 0.70 cutoff). The owner chose "Term coverage, keep 0.70" (asked twice, same answer). Draft 3: live extraction showed the real model's terms ('expiration', 'resend') scored TCK-1002 at 0.60; the owner chose "Prefix matching in confidence" with the cutoff kept at 0.70. A material SDD edit resets this gate to Pending.
+- Evidence: conversation record; R1 and R6 measurements in the plan (Risks table and Phase 4 note)
 - Approver/time: project owner, 2026-10-12
 
 ## Section 1 — Introduction & Purpose
@@ -242,7 +242,7 @@ All five outcomes, plus malformed model output, an LLM timeout then retry, and a
 |---|---|---|---|
 | DES-025 | Graph with deterministic nodes and two `create_agent` LLM nodes | Free-form tool agent; plain Python | Edges guarantee the incident stop and no-draft-on-escalate. Cost: more dependencies and a state schema. |
 | DES-026 | Area detected from `ownership.json` area names, no LLM | LLM extraction; hand-written keyword dict | Deterministic, testable, new areas work automatically (Q-012). Cost: synonyms don't match by themselves, so detection leans on the title; no match gives a clarification error. |
-| DES-027 | Retrieval-based confidence as term coverage (amended in draft 2) | LLM self-reported; report-only; weighted score over the maximum title weight | Reproducible and gates escalation without the model grading itself (Q-003). The weighted formula measured 0.57 and 0.50 on the correct documents for TCK-1001 and TCK-1002, so it could never pass the 0.70 cutoff; coverage measured 0.86 and 1.00. Cost: measures retrieval match, not answer quality (the later evals cover that), and does not separate documents that share common terms, so the existing search ranking still picks the document. |
+| DES-027 | Retrieval-based confidence as term coverage with 5-letter prefix matching (amended in drafts 2 and 3) | LLM self-reported; report-only; weighted score over the maximum title weight | Reproducible and gates escalation without the model grading itself (Q-003). The weighted formula measured 0.57 and 0.50 on the correct documents for TCK-1001 and TCK-1002, so it could never pass the 0.70 cutoff; coverage measured 0.86 and 1.00. Cost: measures retrieval match, not answer quality (the later evals cover that), and does not separate documents that share common terms, so the existing search ranking still picks the document. |
 | DES-028 | Filter to approved and internal before scoring | Pass everything and let the model weigh | Keeps stale content like KB-102 out (Q-004). Cost: a correct draft-only document is never used. |
 | DES-029 | Citations come from documents passed to the draft step | Model-generated citations | Prevents invented sources. Cost: unused passed documents may be cited, so cite only top-scoring ones. |
 | DES-030 | Validate before extraction | Extract first | Saves an LLM call on empty tickets (AC-004). Cost: small change from the spec's listed order. |
@@ -253,11 +253,13 @@ All five outcomes, plus malformed model output, an LLM timeout then retry, and a
 
 **Area detection (DES-008).** For each owner area, split its name on `-` into terms (`patient-portal` gives `patient`, `portal`). Tokenize the lowercased title and description with the existing `_terms`. An area matches when any of its terms appears. Choose the area with the most matched terms, breaking ties by `ownership.json` order. Weak spot: `patient` could match scheduling tickets; mitigate by ignoring terms shared by more than one area and preferring the longest term match.
 
-**Confidence (DES-027, amended in draft 2).** For the top approved, internal document (ranked by the existing search score), `confidence = matched_terms / query_terms`: the share of query terms that appear in the document title or body, using the existing `_score(term, document) > 0` test. The result is between 0 and 1 by construction, and 0.0 for an empty term set. Query terms come from the ticket title plus `product_terms`. The escalation cutoff stays at 0.70 and is named `CONFIDENCE_THRESHOLD`.
+**Confidence (DES-027, amended in draft 2).** For the top approved, internal document (ranked by the existing search score), `confidence = matched_terms / query_terms`: the share of query terms that appear in the document title or body, A term counts as found when it is one of the document's title or body terms, or (draft 3) when both it and a document term are at least 5 letters long and start with the same 5 letters, a crude stem so that "expiration" matches "expire" and "resend" matches "resending". The result is between 0 and 1 by construction, and 0.0 for an empty term set. Query terms come from the ticket title plus `product_terms`. The escalation cutoff stays at 0.70 and is named `CONFIDENCE_THRESHOLD`.
 
 **Measured (R1):** the original weighted formula, `_score / (3 x terms)`, gave 0.57 (TCK-1001, KB-101) and 0.50 (TCK-1002, KB-103) and was replaced. Term coverage gave 0.86 and 1.00; TCK-1003's top document KB-104 gave 0.43; billing-like and unrelated queries gave 0.00 for every approved document.
 
-**Risk:** coverage ignores term weight and the tokenizer has no stemming ("resetting" does not match "reset", "expired" does not match "expire"), so scores depend on the query terms the extraction step produces. Documents sharing common terms score similarly (KB-101 scored 0.75 on the TCK-1002 query), so correctness of the cited document still rests on search ranking.
+**Measured with the real model's terms (R6, draft 3):** exact matching gave TCK-1001 0.83, TCK-1002 0.60 and TCK-1003 0.29 (the model returns phrases such as "invitation expiration" and "resend invitation"); prefix matching gave 0.83, 1.00 and 0.57. Adding the ticket description terms to the query was worse (0.29, 0.27, 0.11) and was rejected.
+
+**Risk:** coverage ignores term weight and the tokenizer has no stemming, so scores depend on the query terms the extraction step produces; the 5-letter prefix rule reduces this but can occasionally match an unrelated word that shares a prefix. Documents sharing common terms score similarly (KB-101 scored 0.75 on the TCK-1002 query), so correctness of the cited document still rests on search ranking.
 
 ## Section 10 — Boundaries
 

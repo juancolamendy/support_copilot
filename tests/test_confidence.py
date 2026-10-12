@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from support_copilot.fixture_store import load_knowledge, load_tickets
@@ -14,6 +16,11 @@ CANNED_PRODUCT_TERMS = {
     "TCK-1002": ["invitation", "expired", "portal", "link"],
 }
 EXPECTED_TOP_DOCUMENT = {"TCK-1001": "KB-101", "TCK-1002": "KB-103"}
+# product_terms the real model returned on 2026-10-12 (recorded; test stays offline).
+LIVE_PRODUCT_TERMS = {
+    "TCK-1001": ["patient portal", "password reset", "reset email"],
+    "TCK-1002": ["portal invitation", "invitation expiration", "resend invitation"],
+}
 
 
 def _document(document_id: str):
@@ -68,6 +75,42 @@ def test_005_confidence_is_deterministic_and_within_bounds() -> None:
 def test_005_confidence_threshold_is_seventy_percent() -> None:
     """[TEST-005][AC-007][REQ-F-006a][DES-027][TASK-004] the cutoff is 0.70."""
     assert CONFIDENCE_THRESHOLD == 0.70
+
+
+def test_005_a_term_matches_a_document_term_sharing_its_first_five_letters() -> None:
+    """[TEST-005][AC-007][DES-027][TASK-004] crude stem: expire matches expiration."""
+    document = _document("KB-103")
+
+    assert confidence({"expiration"}, document) == 1.0
+    assert confidence({"resend"}, document) == 1.0
+
+
+def test_005_short_terms_must_match_exactly() -> None:
+    """[TEST-005][AC-007][DES-027][TASK-004] a prefix needs five letters each side."""
+    document = replace(_document("KB-101"), title="Signs", content="signs shown")
+
+    assert confidence({"signs"}, document) == 1.0
+    assert confidence({"sign"}, document) == 0.0
+
+
+def test_005_terms_with_a_different_first_five_letters_do_not_match() -> None:
+    """[TEST-005][AC-007][DES-027][TASK-004] only a shared prefix counts."""
+    assert confidence({"invoice", "billing"}, _document("KB-103")) == 0.0
+
+
+@pytest.mark.parametrize("ticket_id", ["TCK-1001", "TCK-1002"])
+async def test_006_real_model_terms_also_reach_the_threshold(ticket_id: str) -> None:
+    """[TEST-006][AC-001][DES-027][TASK-004] R6: real model terms also pass."""
+    ticket = _ticket(ticket_id)
+    product_terms = LIVE_PRODUCT_TERMS[ticket_id]
+    query = f"{ticket.title} {' '.join(product_terms)}"
+    query_terms = _terms(ticket.title) | _terms(" ".join(product_terms))
+
+    hits = filter_docs(await create_fixture_tools().search_knowledge(query))
+    top = hits[0]
+
+    assert top.id == EXPECTED_TOP_DOCUMENT[ticket_id]
+    assert confidence(query_terms, top) >= CONFIDENCE_THRESHOLD
 
 
 @pytest.mark.parametrize("ticket_id", ["TCK-1001", "TCK-1002"])
