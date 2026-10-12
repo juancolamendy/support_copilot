@@ -84,7 +84,7 @@ Replace the placeholder `handle_support_ticket` with a LangGraph workflow (deter
 |---|---|---|---|---|
 | R1: 0.70 cutoff may be unreachable on fixtures given no stemming and weight 1 for body matches | AC-001/AC-002 would escalate instead of answering | project owner | TASK-004 measures it. If TCK-1001 or TCK-1002 score below 0.70, stop and amend the SDD (e.g. term-coverage formula or a different cutoff); do not tune silently | Phase 5 |
 | R2: a fake chat model may not drive `create_agent` structured output | Phase 6 and 7 tests need another seam | project owner | Preferred: custom fake chat model with `bind_tools`. Fallback: inject at an `Extractor`/`Drafter` seam in `llm.py` and note it in the SDD | Phase 6 |
-| R3: no git repository, so there are no atomic commits or revert boundaries | Plan's commit and rollback steps cannot run | project owner | Run `git init` and commit the current state as a baseline before Phase 1, or accept manual file backups | Phase 1 |
+| R3: no git repository, so there are no atomic commits or revert boundaries | Plan's commit and rollback steps cannot run | project owner | RESOLVED: `python/` turned out to have an existing git history; baseline commit 432b52c made and work is on branch `plan/support-copilot` (no separate worktree) | Phase 1 |
 | R4: Python 3.10 on PATH vs `requires-python >=3.11` | `python3 -m pytest` fails outside uv | project owner | Always run via `uv run`; uv provisions 3.11+ | Phase 1 |
 
 ## Assumptions
@@ -93,12 +93,12 @@ Replace the placeholder `handle_support_ticket` with a LangGraph workflow (deter
 ## Human Quality Gates
 
 ### Plan Approval
-- Status: Pending
+- Status: Approved
 - Required reviewers: technical owner
 - Artifact revision: draft 1 (2026-10-12)
-- Decision and conditions: pending
-- Evidence: pending
-- Approved by / at: pending
+- Decision and conditions: Owner ran `/cg-exec 1` after the plan summary asked them to confirm or change it, and chose "git init + baseline commit" for R3. R1, R2 and R4 remain open and are handled in their phases.
+- Evidence: conversation record, 2026-10-12
+- Approved by / at: project owner, 2026-10-12
 
 Any material plan edit resets this approval to `Pending`. `cg-exec` must not start Phase 1 until this gate is approved for the current revision.
 
@@ -154,7 +154,7 @@ This directory is not a git repository (R3), so no worktree is created. If you i
 **Size:** S
 **Files affected:** `pyproject.toml`, `uv.lock` (generated), `tests/test_tooling.py`
 **Task:**
-- [ ] TASK-001 — uv project with dependencies, pytest config and `live` marker
+- [x] TASK-001 — uv project with dependencies, pytest config and `live` marker
 
   **Requirements:** REQ-F-010 (constraint; no AC)
   **Design:** DES-018, DES-024
@@ -192,7 +192,14 @@ This directory is not a git repository (R3), so no worktree is created. If you i
   |---|---|---|---|---|---|---|---|---|
   | TEST-001 | N/A (REQ-F-010) | unit | Primary | clean uv environment | import `create_agent`, `StateGraph`, `ChatAnthropic`, `langsmith` | imports succeed | missing dependency fails the test | marker `live` registered (no warnings) |
 
-  **Completion evidence:** changed files; red baseline: `uv run pytest tests/test_tooling.py` fails on import; green: `uv sync`, `uv run pytest` exit 0 with counts; license/advisory note; discovered decisions (or `None discovered`); remaining uncertainty
+  **Completion evidence (2026-10-12):**
+  - Changed files: `pyproject.toml`, `uv.lock`, `tests/test_tooling.py`, this plan, `docs/traceability/index.md`.
+  - RESULT-001 (red baseline): `uv run --no-project --python 3.12 --with pytest pytest tests/test_tooling.py -q` — exit 1; 2 selected, 0 passed, 2 failed (`ModuleNotFoundError` on the imports; `live` marker not registered).
+  - RESULT-002 (focused green): `uv run pytest tests/test_tooling.py -q` — exit 0; 2 selected, 2 passed, 0 failed, 0 skipped. `uv sync` — exit 0.
+  - RESULT-003 (full suite): `uv run pytest -q` — exit 0; 4 selected, 4 passed, 0 failed, 0 skipped (2 starter + 2 TEST-001). `uv run python -m support_copilot.demo` — runs, placeholder output unchanged.
+  - Resolved versions in `uv.lock`: langchain >=1.4.5, langchain-anthropic >=1.7.6, langgraph >=1.2.14, langsmith >=0.14.7, pytest 9.1.1, pytest-asyncio 1.4.0. uv provisioned Python 3.12.8 (system python3 is 3.10), which resolves R4 when commands run through `uv run`.
+  - Discovered decisions: (1) `pythonpath = ["."]` added to the pytest config because `tests/` is not a package and `support_copilot` was otherwise not importable; (2) `[tool.uv] package = false` set explicitly (the project has no build backend); (3) `addopts = "--strict-markers"` so a misspelled marker fails instead of being ignored. Follow-up: none discovered.
+  - Remaining uncertainty: the license and security-advisory review required by the policy evidence has NOT been performed by this run; the owner must review `uv.lock` before merge. The traceability gate (TASK-010) does not exist yet.
 
 **Expected authored LOC:** tests +10–15; config +15–25
 **Success criteria:** `uv run pytest` exits 0 with the starter tests plus TEST-001; `uv.lock` committed.
@@ -697,7 +704,7 @@ This directory is not a git repository (R3), so no worktree is created. If you i
 - **DES:** 001 → T8; 002 → T7; 003 → T7; 004 → T3, T7; 005 → T9; 006 → T6; 007 → T5; 008 → T3, T4; 009 → T7, T8; 010 → T7, T8; 011 → T8; 012–014 → T2; 015 → T6, T9; 016 → T7; 017 → T6; 018 → T1; 019 → T6, T10; 020 → T3; 021 → T8; 022 → T6, T8; 023 → T7, T10; 024 → T1, T6, T10; 025–032 (decisions) → the tasks implementing the decision above.
 
 ## TODO List (ordered)
-- [ ] Phase 1: Tooling and dependencies
+- [x] Phase 1: Tooling and dependencies
 - [ ] Phase 2: Output contract and types
 - [ ] Phase 3: Area detection and document filter
 - [ ] Phase 4: Confidence score and calibration
