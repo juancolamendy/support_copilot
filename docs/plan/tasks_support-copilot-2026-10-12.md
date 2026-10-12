@@ -211,7 +211,7 @@ This directory is not a git repository (R3), so no worktree is created. If you i
 **Size:** S
 **Files affected:** `support_copilot/types.py`, `support_copilot/copilot.py`, `tests/test_types.py`
 **Task:**
-- [ ] TASK-002 — Replace `SupportDecision` with `SupportResult` and add LLM schemas
+- [x] TASK-002 — Replace `SupportDecision` with `SupportResult` and add LLM schemas
 
   **Requirements:** REQ-F-008, REQ-F-002; AC-013 (secondary)
   **Design:** DES-012, DES-013, DES-014
@@ -249,7 +249,14 @@ This directory is not a git repository (R3), so no worktree is created. If you i
   |---|---|---|---|---|---|---|---|---|
   | TEST-002 | AC-013 | unit | Secondary — proves the contract shape before any outcome exists | none | construct `SupportResult` with defaults | fields equal the SDD list; `escalate` False; `citations` empty | mutation of a frozen instance raises | `TicketDetails` rejects a missing `summary` |
 
-  **Completion evidence:** changed files; red/green commands and exit codes; demo output shows the placeholder error result; discovered decisions; remaining uncertainty
+  **Completion evidence (2026-10-12):**
+  - Changed files: `support_copilot/types.py`, `support_copilot/copilot.py`, `tests/test_types.py`, this plan, `docs/traceability/index.md`.
+  - RESULT-004 (red baseline): `uv run pytest tests/test_types.py -q` — exit 2; collection error `ImportError: cannot import name 'Citation'`; 0 selected.
+  - RESULT-005 (focused green): `uv run pytest tests/test_types.py -q` — exit 0; 9 selected, 9 passed, 0 failed, 0 skipped.
+  - RESULT-006 (full suite): `uv run pytest -q` — exit 0; 13 selected, 13 passed, 0 failed, 0 skipped (2 starter + 2 TEST-001 + 9 TEST-002). `uv run python -m support_copilot.demo` — exit 0; each ticket prints the `SupportResult` error placeholder with all contract fields.
+  - Discovered decisions: (1) `SupportResult` gets a `ResultStatus` literal (`"ok" | "error"`) and `SupportAction` is removed, per SDD Section 4; (2) `TicketDetails.symptoms` and `product_terms` default to empty lists so a model that omits them does not fail validation, while `summary` stays required; (3) `WorkflowState` is a `total=False` TypedDict so each node can return a partial update.
+  - Follow-ups: (a) `pydantic` is imported directly but is only a transitive dependency of `langchain`; the owner should decide whether to declare it in `pyproject.toml` (a change outside this task's allowed files); (b) `CLAUDE.md` still describes `SupportDecision`/`Evidence` and is updated in TASK-010; (c) `types.py:119` (existing `find_active_incidents` Protocol line) is 89 characters, over the ruff limit of 88; left untouched as pre-existing.
+  - Remaining uncertainty: the primary AC-013 check (all five outcomes) lands in TASK-008 (TEST-016); this phase proves only the shape and defaults.
 
 **Expected authored LOC:** production +40–75; tests +30–45
 **Success criteria:** `uv run pytest` and the demo both run without import errors.
@@ -705,7 +712,7 @@ This directory is not a git repository (R3), so no worktree is created. If you i
 
 ## TODO List (ordered)
 - [x] Phase 1: Tooling and dependencies
-- [ ] Phase 2: Output contract and types
+- [x] Phase 2: Output contract and types
 - [ ] Phase 3: Area detection and document filter
 - [ ] Phase 4: Confidence score and calibration
 - [ ] Phase 5: Fixture tool wrappers

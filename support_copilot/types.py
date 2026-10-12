@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal, Protocol
+from typing import Literal, Protocol, TypedDict
+
+from pydantic import BaseModel, Field
 
 AccessLevel = Literal["internal", "restricted"]
 DocumentStatus = Literal["approved", "draft", "deprecated"]
 IncidentStatus = Literal["investigating", "identified", "monitoring", "resolved"]
-SupportAction = Literal["respond", "clarify", "escalate"]
+ResultStatus = Literal["ok", "error"]
 
 
 @dataclass(frozen=True)
@@ -59,18 +61,50 @@ class LanguageModel(Protocol):
 
 
 @dataclass(frozen=True)
-class Evidence:
+class Citation:
     source_id: str
     reason: str
 
 
 @dataclass(frozen=True)
-class SupportDecision:
-    action: SupportAction
-    message: str
-    evidence: list[Evidence] = field(default_factory=list)
+class SupportResult:
+    status: ResultStatus
+    error_message: str | None = None
+    escalate: bool = False
+    response: str | None = None
+    citations: list[Citation] = field(default_factory=list)
+    confidence_score: float | None = None
     owner: ServiceOwner | None = None
+    incident: Incident | None = None
+    area: str | None = None
     notes: list[str] = field(default_factory=list)
+
+
+class TicketDetails(BaseModel):
+    """Structured output of the extraction step."""
+
+    summary: str
+    symptoms: list[str] = Field(default_factory=list)
+    product_terms: list[str] = Field(default_factory=list)
+
+
+class DraftAnswer(BaseModel):
+    """Structured output of the drafting step; citations are never model-set."""
+
+    response: str
+
+
+class WorkflowState(TypedDict, total=False):
+    """Per-run state of the support workflow; never persisted."""
+
+    ticket: SupportTicket
+    details: TicketDetails
+    area: str | None
+    incident: Incident | None
+    documents: list[KnowledgeDocument]
+    confidence_score: float | None
+    response: str | None
+    result: SupportResult
 
 
 class CopilotTools(Protocol):
