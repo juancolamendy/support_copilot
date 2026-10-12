@@ -83,7 +83,7 @@ Replace the placeholder `handle_support_ticket` with a LangGraph workflow (deter
 | Risk / decision | Impact | Owner | Required decision or mitigation | Due before |
 |---|---|---|---|---|
 | R1: 0.70 cutoff may be unreachable on fixtures given no stemming and weight 1 for body matches | AC-001/AC-002 would escalate instead of answering | project owner | TASK-004 measures it. If TCK-1001 or TCK-1002 score below 0.70, stop and amend the SDD (e.g. term-coverage formula or a different cutoff); do not tune silently | Phase 5 | **MEASURED 2026-10-12 (read-only, before any Phase 4 code):** with the SDD formula `_score / (3 x terms)` the correct top document scores 0.57 for TCK-1001 (KB-101, query = title terms + `password, reset, email, link`) and 0.50 for TCK-1002 (KB-103, query = title terms + `invitation, expired, portal, link`), both below 0.70, so AC-001 and AC-002 would escalate. Retrieval ranking itself is correct (right document is top). **RESOLVED 2026-10-12:** the owner chose term coverage with the 0.70 cutoff kept; SDD draft 2 amends DES-027 and Section 9.
-| R2: a fake chat model may not drive `create_agent` structured output | Phase 6 and 7 tests need another seam | project owner | Preferred: custom fake chat model with `bind_tools`. Fallback: inject at an `Extractor`/`Drafter` seam in `llm.py` and note it in the SDD | Phase 6 |
+| R2: a fake chat model may not drive `create_agent` structured output | Phase 6 and 7 tests need another seam | project owner | Preferred: custom fake chat model with `bind_tools`. Fallback: inject at an `Extractor`/`Drafter` seam in `llm.py` and note it in the SDD | Phase 6 | **RESOLVED 2026-10-12:** the preferred fake works with `create_agent` + `ToolStrategy`; no seam or SDD change needed (RESULT-016 to 018). |
 | R3: no git repository, so there are no atomic commits or revert boundaries | Plan's commit and rollback steps cannot run | project owner | RESOLVED: `python/` turned out to have an existing git history; baseline commit 432b52c made and work is on branch `plan/support-copilot` (no separate worktree) | Phase 1 |
 | R4: Python 3.10 on PATH vs `requires-python >=3.11` | `python3 -m pytest` fails outside uv | project owner | Always run via `uv run`; uv provisions 3.11+ | Phase 1 |
 
@@ -106,7 +106,7 @@ Any material plan edit resets this approval to `Pending`. `cg-exec` must not sta
 | Checkpoint | Prerequisite phases | Status | Artifact revision | Evidence / approver |
 |---|---|---|---|---|
 | Checkpoint 1 | Phases 1–3 | Approved | plan revision after Phase 3 (2026-10-12) | Covers RESULT-001 to RESULT-009 (Phases 1–3 green, 26 tests). Project owner replied "continue" on 2026-10-12 |
-| Checkpoint 2 | Phases 4–6 | Pending | n/a | n/a |
+| Checkpoint 2 | Phases 4–6 | Pending | plan revision after Phase 6 (2026-10-12) | Covers RESULT-010 to RESULT-018 (Phases 4–6 green, 60 tests); R1 and R2 resolved. Awaiting human approval before Phase 7 |
 | Final | Phases 7–10 | Pending | n/a | n/a |
 
 ## Layer Coverage
@@ -449,7 +449,7 @@ This directory is not a git repository (R3), so no worktree is created. If you i
 **Size:** M
 **Files affected:** `support_copilot/llm.py`, `tests/conftest.py`, `tests/test_llm.py`
 **Task:**
-- [ ] TASK-006 — `llm.py` with `create_agent` extract and draft steps
+- [x] TASK-006 — `llm.py` with `create_agent` extract and draft steps
 
   **Requirements:** REQ-F-002, REQ-F-007, REQ-NF-002; AC-012, AC-015 (secondary)
   **Design:** DES-006, DES-015, DES-017, DES-019, DES-024
@@ -488,7 +488,16 @@ This directory is not a git repository (R3), so no worktree is created. If you i
   | TEST-008 | AC-012 | unit | Primary | fake model returning canned `TicketDetails` JSON | `extract_details` | valid `TicketDetails` with summary, symptoms, product_terms | malformed canned output returns an error value, no exception | empty description never reaches the model (guard by caller) |
   | TEST-009 | AC-015 | resilience | Secondary — proves the retry and timeout policy at the adapter, which the workflow-level test cannot isolate | fake model raising timeout once, then succeeding; and twice | `extract_details` | one retry then success; call count is 2 | two failures return an error value, call count is 2 (no third) | 4xx-style validation error is not retried (call count 1) |
 
-  **Completion evidence:** changed files; red/green commands and exit codes; R2 outcome; discovered decisions; remaining uncertainty
+  **Completion evidence (2026-10-12):**
+  - Changed files: `support_copilot/llm.py` (new), `tests/conftest.py` (new), `tests/test_llm.py` (new), this plan, `docs/traceability/index.md`.
+  - RESULT-016 (red baseline): `uv run pytest tests/test_llm.py -q` — exit 2; collection error `ModuleNotFoundError: No module named 'support_copilot.llm'`; 0 selected.
+  - RESULT-017 (focused green): `uv run pytest tests/test_llm.py -q` — exit 0; 15 selected, 15 passed, 0 failed, 0 skipped (TEST-008: 7; TEST-009: 8 incl. 3 parametrized).
+  - RESULT-018 (full suite): `uv run pytest -q` — exit 0; 60 selected, 60 passed, 0 failed, 0 skipped; also clean under `-W default` (no warnings). `uv run python -m support_copilot.demo` — exit 0.
+  - R2 outcome: RESOLVED. A `BaseChatModel` subclass whose `bind_tools` returns itself drives `create_agent` with `ToolStrategy`; no `Extractor`/`Drafter` seam was needed and the SDD is unchanged. Scratch run before coding: valid canned output → 1 model call; malformed output with `handle_errors=False` → 1 call and `StructuredOutputValidationError`; the default `handle_errors=True` re-prompted and used 2 calls.
+  - Source-driven check: langchain 1.4.5, langchain-core 1.6.10, langchain-anthropic 1.7.6, anthropic 1.13.0. `ToolStrategy(schema, handle_errors=False)` and `create_agent(..., response_format=...)` follow the official structured-output page; `ChatAnthropic` accepts `model`, `timeout` and `max_retries` (checked by introspection and a construct call).
+  - Discovered decisions: (1) `LLMFailure(message)` lives in `llm.py` because `types.py` is outside this task's allowed files; Phases 7 and 8 convert it into `SupportResult(status="error")`. (2) `handle_errors=False` is required, otherwise invalid output is re-prompted and the no-retry rule breaks. (3) Retriable means HTTP status 429 or >= 500, or an exception whose class chain includes `TimeoutError` or `APITimeoutError`; matching by class name avoids importing `anthropic` directly (a transitive dependency). (4) The 4 s limit is enforced by `asyncio.wait_for` around the whole agent call, with the SDK timeout set to the same value and SDK retries off, so the adapter is the single retry layer. (5) Ticket and document text is HTML-escaped inside `<ticket>`, `<ticket_details>` and `<documents>` delimiters so text cannot close a delimiter (tested). (6) The drafting tests are tagged TEST-008 with REQ-F-007 and DES-022 because TASK-006 owns no AC for drafting; AC-001 and AC-002 verify the draft path in Phase 8. (7) `DEFAULT_MODEL = "claude-sonnet-5-5"` comes from the model list given to this environment and has not been verified against the live API; override with `COPILOT_MODEL`.
+  - Follow-ups: (a) the owner should confirm the default model name before the live checks in TASK-010; (b) `pydantic` is still imported directly while only a transitive dependency (open since Phase 2); (c) `handle_support_ticket(ticket, tools, model=None)` must call `get_model()` when `model` is None (Phase 7).
+  - Remaining uncertainty: no real Anthropic call has been made, so real structured-output behavior, the 4 s budget and error types are unverified until the live checks (AC-009, AC-010) in TASK-010. A real `APITimeoutError` or rate-limit error was not exercised, only stand-ins with the same class name and status code.
 
 **Expected authored LOC:** production +70–110; tests +110–170
 **Success criteria:** TEST-008 and TEST-009 pass offline; the fake model and recorder are importable by later phases.
@@ -741,7 +750,7 @@ This directory is not a git repository (R3), so no worktree is created. If you i
 - [x] Phase 3: Area detection and document filter
 - [x] Phase 4: Confidence score and calibration
 - [x] Phase 5: Fixture tool wrappers
-- [ ] Phase 6: LLM adapter and test doubles
+- [x] Phase 6: LLM adapter and test doubles
 - [ ] Phase 7: Workflow: validation, extraction, area, incident stop
 - [ ] Phase 8: Workflow: search, escalate, draft, failures
 - [ ] Phase 9: CLI and demo
