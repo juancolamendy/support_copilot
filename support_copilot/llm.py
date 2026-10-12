@@ -10,7 +10,11 @@ from dataclasses import dataclass
 from typing import Any, TypeVar
 
 from langchain.agents import create_agent
-from langchain.agents.structured_output import StructuredOutputError, ToolStrategy
+from langchain.agents.structured_output import (
+    ProviderStrategy,
+    StructuredOutputError,
+    ToolStrategy,
+)
 from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models.chat_models import BaseChatModel
 from pydantic import BaseModel
@@ -63,6 +67,19 @@ def _clean(text: str) -> str:
     return html.escape(text, quote=False)
 
 
+def _response_format(model: BaseChatModel, schema: type[SchemaT]):
+    """Pick how the model returns structured output.
+
+    Claude rejects the forced `tool_choice` that ToolStrategy relies on, so it uses
+    the provider-native strategy. Other models (the test fakes) use tool output with
+    handle_errors=False so invalid output fails once instead of re-prompting
+    (https://docs.langchain.com/oss/python/langchain/structured-output).
+    """
+    if isinstance(model, ChatAnthropic):
+        return ProviderStrategy(schema)
+    return ToolStrategy(schema, handle_errors=False)
+
+
 def _is_retriable(error: Exception) -> bool:
     status = getattr(error, "status_code", None)
     if isinstance(status, int):
@@ -77,13 +94,11 @@ async def _run_structured(
     user_prompt: str,
     backoff_seconds: float,
 ) -> SchemaT | LLMFailure:
-    # handle_errors=False: invalid output fails once instead of re-prompting the model
-    # (https://docs.langchain.com/oss/python/langchain/structured-output).
     agent = create_agent(
         model,
         tools=[],
         system_prompt=system_prompt,
-        response_format=ToolStrategy(schema, handle_errors=False),
+        response_format=_response_format(model, schema),
     )
     request: dict[str, Any] = {"messages": [{"role": "user", "content": user_prompt}]}
     for attempt in range(MAX_ATTEMPTS):

@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
+from langchain.agents.structured_output import ProviderStrategy, ToolStrategy
+from langchain_anthropic import ChatAnthropic
 
 import support_copilot.llm as llm
 from support_copilot.fixture_store import load_knowledge, load_tickets
@@ -133,6 +135,26 @@ def test_008_get_model_reads_the_model_name_and_disables_sdk_retries(
     assert default_model.model == llm.DEFAULT_MODEL
     assert configured_model.model == "claude-test-model"
     assert configured_model.max_retries == 0
+
+
+def test_008_claude_uses_provider_native_structured_output() -> None:
+    """[TEST-008][REQ-F-002][DES-006][TASK-006] Claude rejects a forced tool_choice."""
+    claude = ChatAnthropic(model="claude-test-model", api_key="sk-test-not-real")
+
+    strategy = llm._response_format(claude, TicketDetails)
+
+    assert isinstance(strategy, ProviderStrategy)
+    assert strategy.schema is TicketDetails
+
+
+def test_008_other_models_use_tool_output_that_never_reprompts(
+    make_fake_model,
+) -> None:
+    """[TEST-008][REQ-F-002][DES-006][TASK-006] invalid output fails once."""
+    strategy = llm._response_format(make_fake_model(), TicketDetails)
+
+    assert isinstance(strategy, ToolStrategy)
+    assert strategy.handle_errors is False
 
 
 async def test_009_one_timeout_is_retried_once_and_then_succeeds(
