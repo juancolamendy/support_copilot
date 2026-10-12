@@ -392,7 +392,7 @@ This directory is not a git repository (R3), so no worktree is created. If you i
 **Size:** S
 **Files affected:** `support_copilot/tools.py`, `tests/test_tool_wrappers.py`
 **Task:**
-- [ ] TASK-005 — `@tool` wrappers for tickets, incidents, knowledge, ownership
+- [x] TASK-005 — `@tool` wrappers for tickets, incidents, knowledge, ownership
 
   **Requirements:** REQ-F-009; AC-014
   **Design:** DES-007
@@ -429,7 +429,15 @@ This directory is not a git repository (R3), so no worktree is created. If you i
   |---|---|---|---|---|---|---|---|---|
   | TEST-007 | AC-014 | contract | Primary | the four fixture files | invoke each tool | incidents for `scheduling` include INC-2041; an invitation query includes KB-103; owner for `patient-portal` is "Portal Platform"; `get_ticket("TCK-1001")` returns that ticket | unknown ticket id returns a clear error value, not an exception | resolved incident INC-2022 not returned |
 
-  **Completion evidence:** changed files; red/green commands and exit codes; discovered decisions; remaining uncertainty
+  **Completion evidence (2026-10-12):**
+  - Changed files: `support_copilot/tools.py` (added `build_langchain_tools`; `FixtureTools`, `_terms`, `_score` unchanged), `tests/test_tool_wrappers.py` (new), this plan, `docs/traceability/index.md`.
+  - RESULT-013 (red baseline): `uv run pytest tests/test_tool_wrappers.py -q` — exit 2; collection error `ImportError: cannot import name 'build_langchain_tools'`; 0 selected.
+  - RESULT-014 (focused green): `uv run pytest tests/test_tool_wrappers.py -q` — exit 0; 9 selected, 9 passed, 0 failed, 0 skipped.
+  - RESULT-015 (full suite): `uv run pytest -q` — exit 0; 45 selected, 45 passed, 0 failed, 0 skipped.
+  - Source-driven check: langchain 1.4.5 / langchain-core 1.6.10. The docs page fetched shows `@tool` and `tool.invoke`; the async `StructuredTool.from_function(coroutine=...)` form was not shown there and is verified by the tests against the installed version.
+  - Discovered decisions: (1) tools return JSON-friendly `dict`/`list[dict]` via `dataclasses.asdict` instead of dataclasses, so a tool result can be serialized into a model message; (2) a miss returns `{"error": ...}` rather than raising or returning `None`, for `get_ticket` and `find_owner`; (3) the ticket tool reads `load_tickets()` directly because tickets are not part of the `CopilotTools` Protocol.
+  - Follow-ups: (a) **security note** — the wrappers mirror `FixtureTools`, so `search_knowledge` returns deprecated, draft and restricted documents unfiltered; the DES-020 filter (`rules.filter_docs`) must be applied by the caller, and the `search_knowledge` tool must not be bound directly to an LLM without it. The design calls the tools from graph nodes, which filter, so nothing is exposed today. (b) `tools.py` now imports `langchain_core`, so `rules.py` (which imports `tools.py`) does too.
+  - Remaining uncertainty: none for this phase; tool schemas for a model-driven agent were not exercised because the design never lets the model choose tools.
 
 **Expected authored LOC:** production +40–60; tests +40–60
 **Success criteria:** TEST-007 passes and existing tests still pass.
@@ -732,7 +740,7 @@ This directory is not a git repository (R3), so no worktree is created. If you i
 - [x] Phase 2: Output contract and types
 - [x] Phase 3: Area detection and document filter
 - [x] Phase 4: Confidence score and calibration
-- [ ] Phase 5: Fixture tool wrappers
+- [x] Phase 5: Fixture tool wrappers
 - [ ] Phase 6: LLM adapter and test doubles
 - [ ] Phase 7: Workflow: validation, extraction, area, incident stop
 - [ ] Phase 8: Workflow: search, escalate, draft, failures
