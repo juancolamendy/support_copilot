@@ -82,7 +82,7 @@ Replace the placeholder `handle_support_ticket` with a LangGraph workflow (deter
 ## Risks and Unresolved Decisions
 | Risk / decision | Impact | Owner | Required decision or mitigation | Due before |
 |---|---|---|---|---|
-| R1: 0.70 cutoff may be unreachable on fixtures given no stemming and weight 1 for body matches | AC-001/AC-002 would escalate instead of answering | project owner | TASK-004 measures it. If TCK-1001 or TCK-1002 score below 0.70, stop and amend the SDD (e.g. term-coverage formula or a different cutoff); do not tune silently | Phase 5 |
+| R1: 0.70 cutoff may be unreachable on fixtures given no stemming and weight 1 for body matches | AC-001/AC-002 would escalate instead of answering | project owner | TASK-004 measures it. If TCK-1001 or TCK-1002 score below 0.70, stop and amend the SDD (e.g. term-coverage formula or a different cutoff); do not tune silently | Phase 5 | **MEASURED 2026-10-12 (read-only, before any Phase 4 code):** with the SDD formula `_score / (3 x terms)` the correct top document scores 0.57 for TCK-1001 (KB-101, query = title terms + `password, reset, email, link`) and 0.50 for TCK-1002 (KB-103, query = title terms + `invitation, expired, portal, link`), both below 0.70, so AC-001 and AC-002 would escalate. Retrieval ranking itself is correct (right document is top). Phase 4 is BLOCKED pending an owner decision; see Phase 4 status note.
 | R2: a fake chat model may not drive `create_agent` structured output | Phase 6 and 7 tests need another seam | project owner | Preferred: custom fake chat model with `bind_tools`. Fallback: inject at an `Extractor`/`Drafter` seam in `llm.py` and note it in the SDD | Phase 6 |
 | R3: no git repository, so there are no atomic commits or revert boundaries | Plan's commit and rollback steps cannot run | project owner | RESOLVED: `python/` turned out to have an existing git history; baseline commit 432b52c made and work is on branch `plan/support-copilot` (no separate worktree) | Phase 1 |
 | R4: Python 3.10 on PATH vs `requires-python >=3.11` | `python3 -m pytest` fails outside uv | project owner | Always run via `uv run`; uv provisions 3.11+ | Phase 1 |
@@ -105,7 +105,7 @@ Any material plan edit resets this approval to `Pending`. `cg-exec` must not sta
 ### Checkpoint Approvals
 | Checkpoint | Prerequisite phases | Status | Artifact revision | Evidence / approver |
 |---|---|---|---|---|
-| Checkpoint 1 | Phases 1–3 | Pending | plan revision after Phase 3 (2026-10-12) | Covers RESULT-001 to RESULT-009 (Phases 1–3 green, 26 tests). Awaiting human approval before Phase 4 |
+| Checkpoint 1 | Phases 1–3 | Approved | plan revision after Phase 3 (2026-10-12) | Covers RESULT-001 to RESULT-009 (Phases 1–3 green, 26 tests). Project owner replied "continue" on 2026-10-12 |
 | Checkpoint 2 | Phases 4–6 | Pending | n/a | n/a |
 | Final | Phases 7–10 | Pending | n/a | n/a |
 
@@ -321,6 +321,7 @@ This directory is not a git repository (R3), so no worktree is created. If you i
 **Git:** plan worktree.
 
 ### Phase 4 — Confidence score and calibration
+**STATUS: BLOCKED on R1 (2026-10-12).** The red/measure step showed the SDD confidence formula cannot reach 0.70 on the answerable fixture tickets (0.57 and 0.50). No Phase 4 code or tests have been written or committed. Measured alternative (term coverage = share of query terms found in the document title or body, using the existing `_score` > 0 test): TCK-1001 top KB-101 = 0.86; TCK-1002 top KB-103 = 1.00; TCK-1003 top KB-104 = 0.43; a billing-like and an unrelated query = 0.00 for every approved document. Changing the formula or the cutoff is "Ask first" (SDD Section 10) and needs an SDD amendment; do not proceed until the owner decides.
 **Goal:** a deterministic confidence score, with a measured check that the 0.70 cutoff is reachable on the fixtures.
 **Size:** S
 **Files affected:** `support_copilot/rules.py`, `tests/test_confidence.py`
