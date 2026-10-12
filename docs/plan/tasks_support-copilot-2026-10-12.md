@@ -105,7 +105,7 @@ Any material plan edit resets this approval to `Pending`. `cg-exec` must not sta
 ### Checkpoint Approvals
 | Checkpoint | Prerequisite phases | Status | Artifact revision | Evidence / approver |
 |---|---|---|---|---|
-| Checkpoint 1 | Phases 1–3 | Pending | n/a | n/a |
+| Checkpoint 1 | Phases 1–3 | Pending | plan revision after Phase 3 (2026-10-12) | Covers RESULT-001 to RESULT-009 (Phases 1–3 green, 26 tests). Awaiting human approval before Phase 4 |
 | Checkpoint 2 | Phases 4–6 | Pending | n/a | n/a |
 | Final | Phases 7–10 | Pending | n/a | n/a |
 
@@ -268,7 +268,7 @@ This directory is not a git repository (R3), so no worktree is created. If you i
 **Size:** S
 **Files affected:** `support_copilot/rules.py`, `tests/test_rules.py`
 **Task:**
-- [ ] TASK-003 — `detect_area` and `filter_docs`
+- [x] TASK-003 — `detect_area` and `filter_docs`
 
   **Requirements:** REQ-F-003a, REQ-F-005; AC-005, AC-008
   **Design:** DES-004, DES-008, DES-020, DES-026, DES-028
@@ -306,7 +306,14 @@ This directory is not a git repository (R3), so no worktree is created. If you i
   | TEST-003 | AC-005 | unit | Primary | `ownership.json` owners; the three fixture tickets | `detect_area` | TCK-1001 and TCK-1002 give `patient-portal`, TCK-1003 gives `scheduling` | text with no area terms returns `None` | a term shared by two areas is ignored |
   | TEST-004 | AC-008 | unit | Primary | `knowledge.json` (KB-101 to KB-106) | `filter_docs` | result ids are exactly KB-101, KB-103, KB-104 | KB-102 (deprecated), KB-105 (restricted), KB-106 (draft, restricted) absent | empty input returns empty |
 
-  **Completion evidence:** changed files; red/green commands and exit codes; test counts; discovered decisions; remaining uncertainty (synonym coverage)
+  **Completion evidence (2026-10-12):**
+  - Changed files: `support_copilot/rules.py` (new), `tests/test_rules.py` (new), this plan, `docs/traceability/index.md`.
+  - RESULT-007 (red baseline): `uv run pytest tests/test_rules.py -q` — exit 2; collection error `ModuleNotFoundError: No module named 'support_copilot.rules'`; 0 selected.
+  - RESULT-008 (focused green): `uv run pytest tests/test_rules.py -q` — exit 0; 13 selected, 13 passed, 0 failed, 0 skipped (TEST-003: 9 cases incl. 3 parametrized; TEST-004: 4 cases).
+  - RESULT-009 (full suite): `uv run pytest -q` — exit 0; 26 selected, 26 passed, 0 failed, 0 skipped.
+  - Discovered decisions: (1) the SDD's "prefer the longest matched term" mitigation is implemented as a tie-break after the matched-term count and before ownership order, and is covered by a test; (2) `_terms` is imported from `tools.py` as the plan directed, which means `rules.py` depends on a private name; (3) an area name made only of stop words or one-letter tokens has no terms and can never match.
+  - Follow-ups: make `_terms` public (rename in `tools.py`, a file outside this task) so `rules.py` does not import a private name; the same applies to TASK-004, which reuses `_score`.
+  - Remaining uncertainty: synonym coverage. Detection leans on area-name words, so a ticket that says only "invitation" or "slots" without "portal", "scheduling" or "billing" yields no area (a clarification error by design, DES-026). A ticket mentioning only "patient" (e.g. "patient cannot book") matches `patient-portal` because `patient` is unique to that area in the current `ownership.json`.
 
 **Expected authored LOC:** production +45–70; tests +60–90
 **Success criteria:** `rules.py` passes TEST-003 and TEST-004 with no network or LLM use.
@@ -713,7 +720,7 @@ This directory is not a git repository (R3), so no worktree is created. If you i
 ## TODO List (ordered)
 - [x] Phase 1: Tooling and dependencies
 - [x] Phase 2: Output contract and types
-- [ ] Phase 3: Area detection and document filter
+- [x] Phase 3: Area detection and document filter
 - [ ] Phase 4: Confidence score and calibration
 - [ ] Phase 5: Fixture tool wrappers
 - [ ] Phase 6: LLM adapter and test doubles
