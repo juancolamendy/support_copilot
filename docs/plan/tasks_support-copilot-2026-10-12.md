@@ -647,7 +647,7 @@ This directory is not a git repository (R3), so no worktree is created. If you i
 **Size:** S
 **Files affected:** `support_copilot/cli.py`, `support_copilot/demo.py`, `tests/test_cli.py`
 **Task:**
-- [ ] TASK-009 — `python -m support_copilot.cli` and demo update
+- [x] TASK-009 — `python -m support_copilot.cli` and demo update
 
   **Requirements:** REQ-F-001, REQ-NF-003; AC-011, AC-010 (scan), AC-004 (secondary)
   **Design:** DES-005, DES-015
@@ -687,7 +687,16 @@ This directory is not a git repository (R3), so no worktree is created. If you i
   | TEST-020 | AC-010 | security | Primary | env sentinel `ANTHROPIC_API_KEY=sk-test-SENTINEL` | run each path including an error | sentinel absent from stdout and stderr | n/a | logs on stderr contain no ticket text |
   | TEST-021 | AC-004 | integration | Secondary — proves the exit code mapping at the CLI, which the domain test cannot | empty `--description` | run CLI | exit code 1, JSON `status=error` naming `description` | no model call | n/a |
 
-  **Completion evidence:** changed files; red/green commands and exit codes; discovered decisions; remaining uncertainty
+  **Completion evidence (2026-10-12):**
+  - Changed files: `support_copilot/cli.py` (new), `support_copilot/demo.py`, `tests/test_cli.py` (new), this plan, `docs/traceability/index.md`.
+  - RESULT-033 (red baseline): `uv run pytest tests/test_cli.py -q` — exit 2; collection error `ModuleNotFoundError: No module named 'support_copilot.cli'`; 0 selected.
+  - RESULT-034 (focused green): `uv run pytest tests/test_cli.py -q` — exit 0; 14 selected, 14 passed, 0 failed, 0 skipped (TEST-019: 11 incl. 3 parametrized usage errors and the demo; TEST-020: 2; TEST-021: 1).
+  - RESULT-035 (full suite): `uv run pytest -q -W default` — exit 0; 107 selected, 107 passed, 0 failed, 0 skipped; no warnings.
+  - RESULT-036 (manual, real process): `uv run python -m support_copilot.cli --ticket TCK-9999` — exit 1, JSON error `ticket not found: TCK-9999`; `--ticket TCK-1001 --title x` — exit 2, usage on stderr; `LANGSMITH_TRACING=false uv run python -m support_copilot.cli --ticket TCK-1002` (live, synthetic fixture ticket) — exit 0, stdout parsed as a single JSON object (ok, `escalate` false, confidence 1.0, citations `[KB-103]`), stderr carried only the node lines (validate 0 ms, extract 2279 ms, detect_area 0 ms, check_incident 0 ms, search 0 ms, draft 1678 ms).
+  - Source-driven check: Python 3.12 stdlib `argparse` and `logging`; no new dependencies.
+  - Discovered decisions: (1) `main(argv, *, tools=None, model=None)` takes injected tools and model for tests and runs the workflow with `asyncio.run`, so it must be called from synchronous code (the CLI tests are synchronous for that reason). (2) `confidence_score` is rounded to two decimals only in `format_result`, which the demo now shares, so the gate still uses the raw value (closes the Phase 8 follow-up); the demo's output therefore changed from raw floats to rounded ones. (3) The stderr log handler resolves `sys.stderr` at emit time and is attached once to the `support_copilot` logger at INFO; `propagate` is left on so the `caplog` tests from Phases 7 and 8 keep working. (4) Free-text defaults: ticket id `TCK-CLI`, title empty, requester role and created-at `unknown`. (5) Argument rules: `--ticket` cannot be combined with `--title`/`--description`, and `--title` without `--description` is a usage error (exit 2); an explicit empty `--description ""` is a workflow error (exit 1, names `description`). (6) An unknown `--ticket` id is an error result (exit 1), not a usage error.
+  - Follow-ups: none new. Still open from earlier phases: the duplicated `RecordingTools`, the private `tools._terms` import, and the area-detection tie-break weakness.
+  - Remaining uncertainty: the LangSmith trace half of AC-010 and the p95 latency of AC-009 are not yet measured (TASK-010); `AGENTS.md` and `CLAUDE.md` still list the old commands until TASK-010. `--description -` on an interactive terminal waits for input by design.
 
 **Expected authored LOC:** production +70–100; tests +80–120
 **Success criteria:** TEST-019 to TEST-021 pass and `uv run python -m support_copilot.cli --ticket TCK-1003` runs against the fakes in tests.
@@ -777,5 +786,5 @@ This directory is not a git repository (R3), so no worktree is created. If you i
 - [x] Phase 6: LLM adapter and test doubles
 - [x] Phase 7: Workflow: validation, extraction, area, incident stop
 - [x] Phase 8: Workflow: search, escalate, draft, failures
-- [ ] Phase 9: CLI and demo
+- [x] Phase 9: CLI and demo
 - [ ] Phase 10: Live checks, traceability gate and docs
