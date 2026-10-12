@@ -326,7 +326,7 @@ This directory is not a git repository (R3), so no worktree is created. If you i
 **Size:** S
 **Files affected:** `support_copilot/rules.py`, `tests/test_confidence.py`
 **Task:**
-- [ ] TASK-004 — `confidence` and fixture calibration
+- [x] TASK-004 — `confidence` and fixture calibration
 
   **Requirements:** REQ-F-006a; AC-007 (and AC-001 secondary)
   **Design:** DES-008, DES-027
@@ -364,7 +364,16 @@ This directory is not a git repository (R3), so no worktree is created. If you i
   | TEST-005 | AC-007 | unit | Primary | fixed documents and term sets | `confidence` twice per input | identical scores on repeat; every term present gives 1.0; half the terms present gives 0.5; a body-only term counts | no overlap gives 0.0; score always within 0 to 1 | empty term set returns 0.0 without error; `CONFIDENCE_THRESHOLD == 0.70` |
   | TEST-006 | AC-001 | unit | Secondary — proves the cutoff is reachable on real fixtures, a risk the primary integration test would hide behind a fake | KB-101 and KB-103 with canned `product_terms` | `confidence` for TCK-1001 and TCK-1002 | top approved document is KB-101 and KB-103, and both scores >= 0.70 | an unrelated query scores 0.0 for every approved document | a failure here reopens R1 |
 
-  **Completion evidence:** changed files; red/green commands and exit codes; scores per ticket; R1 outcome; discovered decisions; remaining uncertainty
+  **Completion evidence (2026-10-12):**
+  - Changed files: `support_copilot/rules.py`, `tests/test_confidence.py` (new), this plan, the SDD (separate commit `7e2d63e`), `docs/traceability/index.md`.
+  - RESULT-010 (red baseline): `uv run pytest tests/test_confidence.py -q` — exit 2; collection error `ImportError: cannot import name 'CONFIDENCE_THRESHOLD'`; 0 selected.
+  - RESULT-011 (focused green): `uv run pytest tests/test_confidence.py -q` — exit 0; 10 selected, 10 passed, 0 failed, 0 skipped (TEST-005: 7; TEST-006: 3 incl. 2 parametrized).
+  - RESULT-012 (full suite): `uv run pytest -q` — exit 0; 36 selected, 36 passed, 0 failed, 0 skipped.
+  - Measured scores (search over approved, internal documents; query = title terms + canned `product_terms`): TCK-1001 → KB-101 search score 12, confidence 0.857; next hits KB-103 0.714, KB-104 0.143. TCK-1002 → KB-103 search score 6, confidence 1.000; next hits KB-101 0.750, KB-104 0.250. Both expected documents are top and clear 0.70.
+  - R1 outcome: the original weighted formula measured 0.57 and 0.50 before any code; the owner chose term coverage with the 0.70 cutoff kept (asked twice, same answer); SDD draft 2 amends DES-027 and Section 9 (commit `7e2d63e`).
+  - Discovered decisions: (1) `CONFIDENCE_THRESHOLD = 0.70` is defined in `rules.py` for Phase 8 to import; (2) `_score(term, doc) > 0` is reused as the "term found" test, so `confidence` shares the tokenizer and its lack of stemming; (3) the tests canned the `product_terms` a model would return, so the real extraction step may produce different terms.
+  - Follow-ups: none new beyond the earlier `_terms`/`_score` public-rename follow-up.
+  - Remaining uncertainty: coverage does not tell similar documents apart — KB-103 also scores 0.714 on the TCK-1001 query and would pass the cutoff, so a correct citation relies on the search ranking choosing the top document. With real model-extracted terms the scores may differ; the live checks in TASK-010 will show this.
 
 **Expected authored LOC:** production +20–30; tests +50–80
 **Success criteria:** TEST-005 and TEST-006 pass, or the phase stops with R1 raised.
@@ -722,7 +731,7 @@ This directory is not a git repository (R3), so no worktree is created. If you i
 - [x] Phase 1: Tooling and dependencies
 - [x] Phase 2: Output contract and types
 - [x] Phase 3: Area detection and document filter
-- [ ] Phase 4: Confidence score and calibration
+- [x] Phase 4: Confidence score and calibration
 - [ ] Phase 5: Fixture tool wrappers
 - [ ] Phase 6: LLM adapter and test doubles
 - [ ] Phase 7: Workflow: validation, extraction, area, incident stop

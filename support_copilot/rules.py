@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 
-from .tools import _terms
+from .tools import _score, _terms
 from .types import KnowledgeDocument, ServiceOwner
+
+CONFIDENCE_THRESHOLD = 0.70
 
 
 def _unique_area_terms(owners: Sequence[ServiceOwner]) -> dict[str, set[str]]:
@@ -49,3 +51,11 @@ def filter_docs(documents: Iterable[KnowledgeDocument]) -> list[KnowledgeDocumen
         for document in documents
         if document.status == "approved" and document.access == "internal"
     ]
+
+
+def confidence(query_terms: Collection[str], document: KnowledgeDocument) -> float:
+    """Share of query terms found in the document title or body, from 0 to 1."""
+    if not query_terms:
+        return 0.0
+    found = sum(1 for term in query_terms if _score({term}, document) > 0)
+    return found / len(query_terms)
