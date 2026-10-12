@@ -106,7 +106,7 @@ Any material plan edit resets this approval to `Pending`. `cg-exec` must not sta
 | Checkpoint | Prerequisite phases | Status | Artifact revision | Evidence / approver |
 |---|---|---|---|---|
 | Checkpoint 1 | Phases 1–3 | Approved | plan revision after Phase 3 (2026-10-12) | Covers RESULT-001 to RESULT-009 (Phases 1–3 green, 26 tests). Project owner replied "continue" on 2026-10-12 |
-| Checkpoint 2 | Phases 4–6 | Pending | plan revision after Phase 6 (2026-10-12) | Covers RESULT-010 to RESULT-018 (Phases 4–6 green, 60 tests); R1 and R2 resolved. Awaiting human approval before Phase 7 |
+| Checkpoint 2 | Phases 4–6 | Approved | plan revision after Phase 6 (2026-10-12) | Covers RESULT-010 to RESULT-018 (Phases 4–6 green, 60 tests); R1 and R2 resolved. Project owner replied "continue" on 2026-10-12 |
 | Final | Phases 7–10 | Pending | n/a | n/a |
 
 ## Layer Coverage
