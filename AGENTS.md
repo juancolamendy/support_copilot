@@ -5,15 +5,21 @@ Agent learning journal for the Product Support Copilot (Python starter). See `CL
 ## Project Interface
 
 ### Commands
-- Install / development: N/A (stdlib only, Python >= 3.11); demo: `python3 -m support_copilot.demo`
-- Unit tests: `python3 -m unittest discover -s tests`
-- Integration tests: N/A (no integration suite; everything runs against local fixtures)
+- Install / development: `uv sync` (Python >= 3.11 is provisioned by uv; always run through `uv run`)
+- Unit tests: `uv run pytest` (offline and deterministic; single test: `uv run pytest tests/test_workflow_answer.py::test_013_answerable_ticket_gets_a_cited_draft`)
+- Integration tests: the workflow and CLI tests in `tests/` run the whole flow against fixtures with a fake chat model (covered by `uv run pytest`)
+- Live checks (real Anthropic and LangSmith, opt-in): `uv run pytest -m live -s` (needs `ANTHROPIC_API_KEY`; the trace check also needs `LANGSMITH_API_KEY`)
+- Traceability gate: `uv run pytest tests/test_traceability.py` (fails if an `AC-*` in `docs/requirement/requirements.md` has no test naming it)
+- Run: `uv run python -m support_copilot.cli --ticket TCK-1001` (or `--title ... --description ...`); demo over all fixtures: `uv run python -m support_copilot.demo`
 - Types: N/A (no type checker configured)
 - Lint / formatting: N/A (ruff is configured in `pyproject.toml` but is not a declared dependency and was not verified)
 
 ### Architecture
-- `copilot.py` depends on the Protocols in `types.py`, never on concrete `FixtureTools`.
+- `workflow.py` (LangGraph) is the only place that orders steps; only `extract` and `draft` call the LLM, through `llm.py`. Guardrails live in graph edges and `rules.py`, not in prompts.
+- `copilot.py` and `workflow.py` depend on the Protocols in `types.py`, never on concrete `FixtureTools`; tests inject a fake chat model (`tests/conftest.py`).
+- Only approved, internal documents may reach the model or a citation (`rules.filter_docs`); citations are built from the documents sent to the model, never from model text.
 - Fixture JSON is read only via `fixture_store.py`; data lives in `../fixtures/`.
+- Test names carry their `TEST-*` and `AC-*` ids so the traceability gate can find them.
 - Public API or event changes require a compatibility decision and migration note.
 
 ### Safety

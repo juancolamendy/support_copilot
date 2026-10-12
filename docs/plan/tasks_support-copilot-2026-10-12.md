@@ -109,7 +109,7 @@ Any material plan edit resets this approval to `Pending`. `cg-exec` must not sta
 |---|---|---|---|---|
 | Checkpoint 1 | Phases 1–3 | Approved | plan revision after Phase 3 (2026-10-12) | Covers RESULT-001 to RESULT-009 (Phases 1–3 green, 26 tests). Project owner replied "continue" on 2026-10-12 |
 | Checkpoint 2 | Phases 4–6 | Approved | plan revision after Phase 6 (2026-10-12) | Covers RESULT-010 to RESULT-018 (Phases 4–6 green, 60 tests); R1 and R2 resolved. Project owner replied "continue" on 2026-10-12 |
-| Final | Phases 7–10 | Pending | n/a | n/a |
+| Final | Phases 7–10 | Pending | plan revision after Phase 10 (2026-10-12) | Covers RESULT-019 to RESULT-040 (Phases 7–10, 110 offline tests passing, 2 live tests opt-in), plus the R5 and R6 fixes. Open: the LangSmith trace check (TEST-024) is pending the owner's own run. Awaiting human approval |
 
 ## Layer Coverage
 | Layer | In scope? | Phase(s) |
@@ -708,7 +708,7 @@ This directory is not a git repository (R3), so no worktree is created. If you i
 **Size:** S
 **Files affected:** `tests/test_live.py`, `tests/test_traceability.py`, `AGENTS.md`, `CLAUDE.md`
 **Task:**
-- [ ] TASK-010 — Live performance/trace tests, AC traceability test, command docs
+- [x] TASK-010 — Live performance/trace tests, AC traceability test, command docs
 
   **Requirements:** REQ-NF-001, REQ-NF-004; AC-009, AC-010 (secondary trace)
   **Design:** DES-019, DES-023, DES-024
@@ -749,7 +749,17 @@ This directory is not a git repository (R3), so no worktree is created. If you i
   | TEST-023 | AC-001..AC-015 | contract | Primary — gate for the plan's traceability requirement, not an AC of its own | `requirements.md` and `tests/` | scan for AC ids | every AC id appears in a test name or docstring | a missing id names the AC in the failure | uses the live requirements file |
   | TEST-024 | AC-010 | end-to-end | Secondary — proves an external trace exists, which the offline scan cannot | live keys, `LANGSMITH_TRACING=true` | run one ticket | a trace for the run exists in LangSmith | key absent from output | skipped without keys |
 
-  **Completion evidence:** changed files; red/green commands and exit codes; timings and trace link (manual); discovered decisions; remaining uncertainty (live checks not run if no key)
+  **Completion evidence (2026-10-12):**
+  - Changed files: `tests/test_traceability.py` (new), `tests/test_live.py` (new), `AGENTS.md` (Commands and Architecture sections only), `CLAUDE.md` (rewritten; it still described the placeholder and `unittest`), this plan, `docs/traceability/index.md`.
+  - RESULT-037 (red baseline): `uv run pytest tests/test_traceability.py -q` — exit 1; 3 selected, 2 passed, 1 failed: `acceptance criteria with no test naming them: ['AC-009']`. The gate found exactly the one real gap.
+  - RESULT-038 (focused green): `uv run pytest tests/test_traceability.py -q` — exit 0; 3 selected, 3 passed, 0 failed, 0 skipped (after `tests/test_live.py` named AC-009).
+  - RESULT-039 (full offline suite): `uv run pytest -q -W default -rs` — exit 0; 112 collected, 110 passed, 0 failed, 2 skipped (the two live tests, skipped with reason "live tests run only with `-m live`"); no warnings; no network use. Documented commands also verified directly: `uv run python -m support_copilot.cli --ticket TCK-9999` exits 1; `uv run pytest tests/test_workflow_answer.py::test_013_answerable_ticket_gets_a_cited_draft` passes; `uv run pytest -m live --collect-only` selects the 2 live tests.
+  - RESULT-040 (manual live, AC-009, TEST-022): `LANGSMITH_TRACING=false uv run pytest -m live -s -k test_022 -q` — exit 0; 1 passed in 218.12 s. 3 fixture tickets x 20 sequential runs = 60 workflow runs, about 100 real Anthropic calls with synthetic fixture text, all 60 results `status="ok"`. TCK-1001 p95 5.05 s (max 6.03 s); TCK-1002 p95 4.35 s (max 4.50 s); TCK-1003 p95 2.21 s (max 2.25 s); overall p95 4.88 s against the 10 s budget. Nothing was sent to LangSmith.
+  - TEST-024 (AC-010 live trace): NOT RUN. The owner declined to let this run turn tracing on and will run `uv run pytest -m live -s -k test_024` themselves. The test traces one synthetic TCK-1002 run into a temporary LangSmith project `support-copilot-live-<random>`, polls for the trace, checks no key is printed, and deletes the project afterwards. The offline half of AC-010 (output scan) is RESULT-033 to RESULT-035.
+  - Source-driven check: langsmith 0.14.7 and langchain-core 1.6.10; `tracing_v2_enabled(project_name=...)`, `wait_for_all_tracers`, `Client.list_runs(project_name=...)` and `Client.delete_project` exist with the signatures used (checked by introspection); not exercised until the owner runs TEST-024.
+  - Discovered decisions: (1) The live tests are opt-in with `-m live`, not merely skipped when a key is missing, because `ANTHROPIC_API_KEY` is set in this environment and a key check alone would make about 100 real calls on every plain `uv run pytest`; an autouse fixture reads the `-m` expression. (2) The traceability gate matches the text `AC-nnn` in test files, so it proves every AC is named by a test and that no test names a missing AC, not that the test is meaningful; the two checks plus the non-vacuous check (at least 15 ACs defined) are TEST-023. (3) `AGENTS.md` changed only in its Commands and Architecture sections (no rules were altered); `CLAUDE.md` was rewritten because it described the placeholder and the stdlib-only setup. (4) p95 is computed by nearest rank over all 60 runs and asserted overall; per-ticket values are printed.
+  - Follow-ups: (a) owner runs `uv run pytest -m live -s -k test_024` and records the result; (b) the owner-side license and security-advisory review of `uv.lock` required in Phase 1 is still open; (c) earlier open items: the duplicated `RecordingTools`, the private `tools._terms` import, the `pydantic` direct import of a transitive dependency, and the area-detection tie-break weakness.
+  - Remaining uncertainty: the p95 was measured sequentially (no concurrency) on one network and one day, so it shows the typical case, not a service level; draft quality is not evaluated (evals are out of scope for v1); the LangSmith trace is unverified until the owner runs TEST-024.
 
 **Expected authored LOC:** tests +60–90; docs +25–40
 **Success criteria:** the offline suite and traceability test pass; the live checks pass or are recorded as not run; the documented commands were each executed.
@@ -787,4 +797,4 @@ This directory is not a git repository (R3), so no worktree is created. If you i
 - [x] Phase 7: Workflow: validation, extraction, area, incident stop
 - [x] Phase 8: Workflow: search, escalate, draft, failures
 - [x] Phase 9: CLI and demo
-- [ ] Phase 10: Live checks, traceability gate and docs
+- [x] Phase 10: Live checks, traceability gate and docs
